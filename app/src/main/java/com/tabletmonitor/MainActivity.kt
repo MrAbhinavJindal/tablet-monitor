@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity() {
         try {
             socket = Socket("localhost", 8888) // Using USB with adb reverse
             
-            while (isActive) {
+            while (scope.isActive) {
                 socket?.getOutputStream()?.write("GET_SCREEN\n".toByteArray())
                 
                 val input = DataInputStream(socket?.getInputStream())
