@@ -13,6 +13,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var imageView: ImageView
     private var socket: Socket? = null
     private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private var laptopWidth = 1920f
+    private var laptopHeight = 1080f
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +39,8 @@ class MainActivity : AppCompatActivity() {
                 input.readFully(imgData)
                 
                 val bitmap = BitmapFactory.decodeByteArray(imgData, 0, size)
+                laptopWidth = bitmap.width.toFloat()
+                laptopHeight = bitmap.height.toFloat()
                 withContext(Dispatchers.Main) {
                     imageView.setImageBitmap(bitmap)
                 }
@@ -52,8 +56,20 @@ class MainActivity : AppCompatActivity() {
         if (event.action == MotionEvent.ACTION_DOWN) {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    // Get ImageView dimensions and position
+                    val imageWidth = imageView.width.toFloat()
+                    val imageHeight = imageView.height.toFloat()
+                    
+                    // Calculate scale
+                    val scaleX = laptopWidth / imageWidth
+                    val scaleY = laptopHeight / imageHeight
+                    
+                    // Convert touch coordinates to laptop coordinates
+                    val laptopX = event.x * scaleX
+                    val laptopY = event.y * scaleY
+                    
                     val touchSocket = Socket("localhost", 8888)
-                    val msg = "TOUCH ${event.x} ${event.y}\n"
+                    val msg = "TOUCH $laptopX $laptopY\n"
                     touchSocket.getOutputStream()?.write(msg.toByteArray())
                     touchSocket.getInputStream()?.read()
                     touchSocket.close()
