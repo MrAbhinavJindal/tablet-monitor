@@ -50,11 +50,13 @@ class MainActivity : AppCompatActivity() {
     
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN) {
-            scope.launch {
+            CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    val touchSocket = Socket("localhost", 8888)
                     val msg = "TOUCH ${event.x} ${event.y}\n"
-                    socket?.getOutputStream()?.write(msg.toByteArray())
-                    socket?.getInputStream()?.read()
+                    touchSocket.getOutputStream()?.write(msg.toByteArray())
+                    touchSocket.getInputStream()?.read()
+                    touchSocket.close()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
