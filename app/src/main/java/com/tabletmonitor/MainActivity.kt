@@ -15,40 +15,65 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var laptopWidth = 1920f
     private var laptopHeight = 1080f
+    private var isConnected = false
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         imageView = findViewById(R.id.imageView)
         
+        startConnection()
+    }
+    
+    private fun startConnection() {
         scope.launch {
-            connectAndStream()
+            while (scope.isActive) {
+                if (!isConnected) {
+                    try {
+                        connectAndStream()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        delay(2000) // Wait 2 seconds before retry
+                    }
+                } else {
+                    delay(1000)
+                }
+            }
         }
     }
     
     private suspend fun connectAndStream() {
         try {
-            socket = Socket("localhost", 8888) // Using USB with adb reverse
+            socket = Socket("localhost", 8888)
+            isConnected = true
             
-            while (scope.isActive) {
-                socket?.getOutputStream()?.write("GET_SCREEN\n".toByteArray())
-                
-                val input = DataInputStream(socket?.getInputStream())
-                val size = input.readInt()
-                val imgData = ByteArray(size)
-                input.readFully(imgData)
-                
-                val bitmap = BitmapFactory.decodeByteArray(imgData, 0, size)
-                laptopWidth = bitmap.width.toFloat()
-                laptopHeight = bitmap.height.toFloat()
-                withContext(Dispatchers.Main) {
-                    imageView.setImageBitmap(bitmap)
+            while (scope.isActive && isConnected) {
+                try {
+                    socket?.getOutputStream()?.write("GET_SCREEN\n".toByteArray())
+                    
+                    val input = DataInputStream(socket?.getInputStream())
+                    val size = input.readInt()
+                    val imgData = ByteArray(size)
+                    input.readFully(imgData)
+                    
+                    val bitmap = BitmapFactory.decodeByteArray(imgData, 0, size)
+                    laptopWidth = bitmap.width.toFloat()
+                    laptopHeight = bitmap.height.toFloat()
+                    withContext(Dispatchers.Main) {
+                        imageView.setImageBitmap(bitmap)
+                    }
+                    
+                    delay(100)
+                } catch (e: Exception) {
+                    isConnected = false
+                    socket?.close()
+                    throw e
                 }
-                
-                delay(100)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            isConnected = false
+            socket?.close()
+            throw e
         }
     }
     
