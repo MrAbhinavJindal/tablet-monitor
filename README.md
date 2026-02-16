@@ -23,43 +23,44 @@ python server.py
 
 ### Android App Setup
 
-1. Install Android Studio
-2. Create a new project and copy files:
-   - MainActivity.kt → app/src/main/java/com/tabletmonitor/
-   - activity_main.xml → app/src/main/res/layout/
-   - AndroidManifest.xml → app/src/main/
-   - build.gradle → app/
-
-3. Update MainActivity.kt line 22 with your laptop's IP address
-
-4. Build and install APK on tablet via USB:
+1. Download APK from GitHub Actions (Actions tab → latest build → Artifacts)
+2. Connect tablet via USB
+3. Install/Update APK:
 ```bash
-adb install app-debug.apk
+install_apk.bat
 ```
+Or manually:
+```bash
+adb install -r app-debug.apk
+```
+
+Note: Use `-r` flag to reinstall without uninstalling previous version
 
 ### USB Connection via ADB
 
 1. Enable USB debugging on tablet (Settings → Developer Options)
 2. Connect tablet via USB
-3. Run on laptop:
-```bash
-adb reverse tcp:5555 tcp:5555
-```
-
-4. Update MainActivity.kt to use "localhost" instead of IP:
-```kotlin
-socket = Socket("localhost", 5555)
-```
+3. Server automatically sets up ADB reverse and launches app
 
 ## Usage
 
-1. Start server on laptop
-2. Launch app on tablet
-3. Tablet will display laptop screen
-4. Touch tablet screen to click on laptop
+1. Connect tablet via USB
+2. Start server on laptop: `python server\server.py`
+3. App launches automatically on tablet
+4. Touch/drag on tablet to control laptop
+
+## Features
+
+- Drag support for drawing in Paint and other apps
+- Screen stays on while app is running
+- Auto-reconnect on USB disconnect/reconnect
+- Auto-launch app when server starts
+- Touch coordinates mapped to actual screen resolution
 
 ## Notes
 
 - Screen updates at ~10 FPS
-- Touch coordinates are mapped to laptop screen
-- Works over WiFi or USB (with ADB reverse)
+- Touch coordinates mapped to actual laptop screen resolution
+- Works via USB with ADB reverse (localhost connection)
+- Supports drag gestures for drawing
+- Tested on Lenovo TB-X605L (1920x1200)
