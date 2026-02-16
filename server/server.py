@@ -49,12 +49,21 @@ def capture_screen():
             monitor = sct.monitors[1]
         screenshot = sct.grab(monitor)
         img = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
+        
+        # Store original dimensions before scaling
+        original_width = screenshot.width
+        original_height = screenshot.height
+        
         img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         img.save(buf, format='JPEG', quality=70)
-        return buf.getvalue()
+        
+        # Return image data with original screen dimensions
+        return buf.getvalue(), original_width, original_height
 
 def handle_client(conn):
+    screen_width = 1920
+    screen_height = 1080
     try:
         while True:
             data = conn.recv(1024)
@@ -64,7 +73,10 @@ def handle_client(conn):
             cmd = data.decode('utf-8', errors='ignore').strip()
             
             if cmd == 'GET_SCREEN':
-                img_data = capture_screen()
+                img_data, screen_width, screen_height = capture_screen()
+                # Send screen dimensions first
+                conn.sendall(struct.pack('>II', screen_width, screen_height))
+                # Then send image
                 conn.sendall(struct.pack('>I', len(img_data)))
                 conn.sendall(img_data)
             

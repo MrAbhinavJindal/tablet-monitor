@@ -63,13 +63,17 @@ class MainActivity : AppCompatActivity() {
                     socket?.getOutputStream()?.write("GET_SCREEN\n".toByteArray())
                     
                     val input = DataInputStream(socket?.getInputStream())
+                    // Read actual screen dimensions
+                    val screenWidth = input.readInt()
+                    val screenHeight = input.readInt()
+                    // Read image size and data
                     val size = input.readInt()
                     val imgData = ByteArray(size)
                     input.readFully(imgData)
                     
                     val bitmap = BitmapFactory.decodeByteArray(imgData, 0, size)
-                    laptopWidth = bitmap.width.toFloat()
-                    laptopHeight = bitmap.height.toFloat()
+                    laptopWidth = screenWidth.toFloat()
+                    laptopHeight = screenHeight.toFloat()
                     withContext(Dispatchers.Main) {
                         imageView.setImageBitmap(bitmap)
                     }
