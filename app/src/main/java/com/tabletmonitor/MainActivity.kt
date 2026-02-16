@@ -23,8 +23,10 @@ class MainActivity : AppCompatActivity() {
         imageView = findViewById(R.id.imageView)
         
         imageView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                handleTouch(event.x, event.y)
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> handleTouchEvent("DOWN", event.x, event.y)
+                MotionEvent.ACTION_MOVE -> handleTouchEvent("MOVE", event.x, event.y)
+                MotionEvent.ACTION_UP -> handleTouchEvent("UP", event.x, event.y)
             }
             true
         }
@@ -84,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun handleTouch(x: Float, y: Float) {
+    private fun handleTouchEvent(action: String, x: Float, y: Float) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val drawable = imageView.drawable ?: return@launch
@@ -115,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                 val laptopY = (adjustedY / scaledHeight) * laptopHeight
                 
                 val touchSocket = Socket("localhost", 8888)
-                val msg = "TOUCH $laptopX $laptopY\n"
+                val msg = "$action $laptopX $laptopY\n"
                 touchSocket.getOutputStream()?.write(msg.toByteArray())
                 touchSocket.getInputStream()?.read()
                 touchSocket.close()

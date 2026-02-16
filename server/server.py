@@ -68,6 +68,24 @@ def handle_client(conn):
                 x, y = float(parts[1]), float(parts[2])
                 pyautogui.click(x, y)
                 conn.sendall(b'OK')
+            
+            elif cmd.startswith('DOWN'):
+                parts = cmd.split()
+                x, y = float(parts[1]), float(parts[2])
+                pyautogui.mouseDown(x, y)
+                conn.sendall(b'OK')
+            
+            elif cmd.startswith('MOVE'):
+                parts = cmd.split()
+                x, y = float(parts[1]), float(parts[2])
+                pyautogui.moveTo(x, y)
+                conn.sendall(b'OK')
+            
+            elif cmd.startswith('UP'):
+                parts = cmd.split()
+                x, y = float(parts[1]), float(parts[2])
+                pyautogui.mouseUp(x, y)
+                conn.sendall(b'OK')
     except:
         pass
     finally:
