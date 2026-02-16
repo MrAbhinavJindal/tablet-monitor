@@ -87,17 +87,32 @@ class MainActivity : AppCompatActivity() {
     private fun handleTouch(x: Float, y: Float) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val drawable = imageView.drawable ?: return@launch
+                
+                // Get actual image dimensions within ImageView
+                val imageWidth = drawable.intrinsicWidth.toFloat()
+                val imageHeight = drawable.intrinsicHeight.toFloat()
+                
                 // Get ImageView dimensions
-                val imageWidth = imageView.width.toFloat()
-                val imageHeight = imageView.height.toFloat()
+                val viewWidth = imageView.width.toFloat()
+                val viewHeight = imageView.height.toFloat()
                 
-                // Calculate scale
-                val scaleX = laptopWidth / imageWidth
-                val scaleY = laptopHeight / imageHeight
+                // Calculate scale to fit (fitCenter behavior)
+                val scale = minOf(viewWidth / imageWidth, viewHeight / imageHeight)
+                val scaledWidth = imageWidth * scale
+                val scaledHeight = imageHeight * scale
                 
-                // Convert touch coordinates to laptop coordinates
-                val laptopX = x * scaleX
-                val laptopY = y * scaleY
+                // Calculate offset (image is centered)
+                val offsetX = (viewWidth - scaledWidth) / 2
+                val offsetY = (viewHeight - scaledHeight) / 2
+                
+                // Adjust touch coordinates
+                val adjustedX = x - offsetX
+                val adjustedY = y - offsetY
+                
+                // Convert to laptop coordinates
+                val laptopX = (adjustedX / scaledWidth) * laptopWidth
+                val laptopY = (adjustedY / scaledHeight) * laptopHeight
                 
                 val touchSocket = Socket("localhost", 8888)
                 val msg = "TOUCH $laptopX $laptopY\n"
