@@ -17,7 +17,12 @@ ADB_PATH = os.path.join(PROJECT_ROOT, 'platform-tools', 'adb.exe')
 
 def setup_adb_reverse():
     try:
+        # Setup port forwarding
         subprocess.run([ADB_PATH, 'reverse', 'tcp:8888', 'tcp:8888'], 
+                      capture_output=True, timeout=5)
+        # Launch app automatically
+        subprocess.run([ADB_PATH, 'shell', 'am', 'start', '-n', 
+                       'com.tabletmonitor/.MainActivity'],
                       capture_output=True, timeout=5)
         return True
     except:
