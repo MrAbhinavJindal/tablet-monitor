@@ -22,6 +22,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         imageView = findViewById(R.id.imageView)
         
+        imageView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                handleTouch(event.x, event.y)
+            }
+            true
+        }
+        
         startConnection()
     }
     
@@ -77,33 +84,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    // Get ImageView dimensions and position
-                    val imageWidth = imageView.width.toFloat()
-                    val imageHeight = imageView.height.toFloat()
-                    
-                    // Calculate scale
-                    val scaleX = laptopWidth / imageWidth
-                    val scaleY = laptopHeight / imageHeight
-                    
-                    // Convert touch coordinates to laptop coordinates
-                    val laptopX = event.x * scaleX
-                    val laptopY = event.y * scaleY
-                    
-                    val touchSocket = Socket("localhost", 8888)
-                    val msg = "TOUCH $laptopX $laptopY\n"
-                    touchSocket.getOutputStream()?.write(msg.toByteArray())
-                    touchSocket.getInputStream()?.read()
-                    touchSocket.close()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+    private fun handleTouch(x: Float, y: Float) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Get ImageView dimensions
+                val imageWidth = imageView.width.toFloat()
+                val imageHeight = imageView.height.toFloat()
+                
+                // Calculate scale
+                val scaleX = laptopWidth / imageWidth
+                val scaleY = laptopHeight / imageHeight
+                
+                // Convert touch coordinates to laptop coordinates
+                val laptopX = x * scaleX
+                val laptopY = y * scaleY
+                
+                val touchSocket = Socket("localhost", 8888)
+                val msg = "TOUCH $laptopX $laptopY\n"
+                touchSocket.getOutputStream()?.write(msg.toByteArray())
+                touchSocket.getInputStream()?.read()
+                touchSocket.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
-        return true
+    }
+    
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        return super.onTouchEvent(event)
     }
     
     override fun onDestroy() {
