@@ -3,6 +3,7 @@ package com.tabletmonitor
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.MotionEvent
+import android.view.WindowManager
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
@@ -19,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
         imageView = findViewById(R.id.imageView)
         
