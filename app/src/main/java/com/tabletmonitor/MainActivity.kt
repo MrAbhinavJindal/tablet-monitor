@@ -118,6 +118,11 @@ class MainActivity : AppCompatActivity() {
                 val adjustedX = x - offsetX
                 val adjustedY = y - offsetY
                 
+                // Check if touch is within image bounds
+                if (adjustedX < 0 || adjustedX > scaledWidth || adjustedY < 0 || adjustedY > scaledHeight) {
+                    return@launch
+                }
+                
                 // Convert to laptop coordinates
                 val laptopX = (adjustedX / scaledWidth) * laptopWidth
                 val laptopY = (adjustedY / scaledHeight) * laptopHeight
