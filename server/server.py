@@ -10,6 +10,7 @@ import os
 import time
 import win32gui
 import win32api
+from turbojpeg import TurboJPEG
 
 HOST = '0.0.0.0'
 PORT = 8888
@@ -20,6 +21,12 @@ ADB_PATH = os.path.join(PROJECT_ROOT, 'platform-tools', 'adb.exe')
 # Global variables for monitor position
 monitor_offset_x = 0
 monitor_offset_y = 0
+
+# Initialize TurboJPEG for hardware-accelerated encoding
+try:
+    jpeg = TurboJPEG()
+except:
+    jpeg = None
 
 def setup_adb_reverse():
     try:
@@ -85,11 +92,17 @@ def capture_screen():
             draw.polygon(points, fill='white', outline='black')
         
         img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=85, optimize=False, subsampling=0)
         
-        # Return image data with original screen dimensions
-        return buf.getvalue(), original_width, original_height
+        # Use TurboJPEG for hardware-accelerated encoding if available
+        if jpeg:
+            import numpy as np
+            img_array = np.array(img)
+            img_data = jpeg.encode(img_array, quality=85, jpeg_subsample=2)
+            return img_data, original_width, original_height
+        else:
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=85, optimize=False, subsampling=0)
+            return buf.getvalue(), original_width, original_height
 
 def handle_client(conn):
     global monitor_offset_x, monitor_offset_y

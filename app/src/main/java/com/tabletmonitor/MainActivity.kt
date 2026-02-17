@@ -95,37 +95,13 @@ class MainActivity : AppCompatActivity() {
     private fun handleTouchEvent(action: String, x: Float, y: Float) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val drawable = imageView.drawable ?: return@launch
-                
-                // Get actual image dimensions within ImageView
-                val imageWidth = drawable.intrinsicWidth.toFloat()
-                val imageHeight = drawable.intrinsicHeight.toFloat()
-                
                 // Get ImageView dimensions
                 val viewWidth = imageView.width.toFloat()
                 val viewHeight = imageView.height.toFloat()
                 
-                // Calculate scale to fit (fitCenter behavior)
-                val scale = minOf(viewWidth / imageWidth, viewHeight / imageHeight)
-                val scaledWidth = imageWidth * scale
-                val scaledHeight = imageHeight * scale
-                
-                // Calculate offset (image is centered)
-                val offsetX = (viewWidth - scaledWidth) / 2
-                val offsetY = (viewHeight - scaledHeight) / 2
-                
-                // Adjust touch coordinates
-                val adjustedX = x - offsetX
-                val adjustedY = y - offsetY
-                
-                // Check if touch is within image bounds
-                if (adjustedX < 0 || adjustedX > scaledWidth || adjustedY < 0 || adjustedY > scaledHeight) {
-                    return@launch
-                }
-                
-                // Convert to laptop coordinates
-                val laptopX = (adjustedX / scaledWidth) * laptopWidth
-                val laptopY = (adjustedY / scaledHeight) * laptopHeight
+                // Direct mapping since fitXY stretches to fill
+                val laptopX = (x / viewWidth) * laptopWidth
+                val laptopY = (y / viewHeight) * laptopHeight
                 
                 val touchSocket = Socket("localhost", 8888)
                 val msg = "$action $laptopX $laptopY\n"
