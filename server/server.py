@@ -24,9 +24,29 @@ monitor_offset_y = 0
 
 # Initialize TurboJPEG for hardware-accelerated encoding
 try:
-    jpeg = TurboJPEG()
-except:
+    # Try project directory first, then common paths
+    possible_paths = [
+        os.path.join(PROJECT_ROOT, 'turbojpeg.dll'),
+        os.path.join(PROJECT_ROOT, 'server', 'turbojpeg.dll'),
+        r'C:\libjpeg-turbo64\bin\turbojpeg.dll',
+        r'C:\libjpeg-turbo\bin\turbojpeg.dll',
+    ]
+    
     jpeg = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            jpeg = TurboJPEG(path)
+            print(f"Using TurboJPEG from {path}")
+            break
+    
+    if not jpeg:
+        raise Exception("turbojpeg.dll not found")
+except Exception as e:
+    jpeg = None
+    print(f"TurboJPEG not available: {e}")
+    print("Download turbojpeg.dll from: https://sourceforge.net/projects/libjpeg-turbo/files/")
+    print("Extract and place turbojpeg.dll in the server folder")
+    print("Using PIL JPEG encoder (slower)")
 
 def setup_adb_reverse():
     try:
@@ -97,7 +117,7 @@ def capture_screen():
         if jpeg:
             import numpy as np
             img_array = np.array(img)
-            img_data = jpeg.encode(img_array, quality=85, jpeg_subsample=2)
+            img_data = jpeg.encode(img_array, quality=75, jpeg_subsample=2)  # Lower quality for speed
             return img_data, original_width, original_height
         else:
             buf = io.BytesIO()
