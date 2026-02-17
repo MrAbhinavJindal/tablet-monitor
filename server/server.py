@@ -2,18 +2,24 @@ import socket
 import struct
 import mss
 import pyautogui
-from PIL import Image
+from PIL import Image, ImageDraw
 import io
 import threading
 import subprocess
 import os
 import time
+import win32gui
+import win32api
 
 HOST = '0.0.0.0'
 PORT = 8888
 # Get the project root directory (parent of server folder)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADB_PATH = os.path.join(PROJECT_ROOT, 'platform-tools', 'adb.exe')
+
+# Global variables for monitor position
+monitor_offset_x = 0
+monitor_offset_y = 0
 
 def setup_adb_reverse():
     try:
@@ -40,28 +46,53 @@ def monitor_adb_connection():
         time.sleep(10)
 
 def capture_screen():
+    global monitor_offset_x, monitor_offset_y
     with mss.mss() as sct:
-        try:
-            # Try to capture monitor 2 (extended display)
-            monitor = sct.monitors[2] if len(sct.monitors) > 2 else sct.monitors[1]
-        except:
-            # Fallback to primary monitor
+        # Check if we have multiple monitors
+        if len(sct.monitors) > 2:
+            # Use monitor 2 (extended display)
+            monitor = sct.monitors[2]
+        else:
+            # Use primary monitor - capture full screen
             monitor = sct.monitors[1]
+        
         screenshot = sct.grab(monitor)
         img = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
         
-        # Store original dimensions before scaling
+        # Store original dimensions and position
         original_width = screenshot.width
         original_height = screenshot.height
+        monitor_offset_x = monitor['left']
+        monitor_offset_y = monitor['top']
+        
+        # Get cursor position and draw it
+        cursor_x, cursor_y = win32api.GetCursorPos()
+        # Adjust cursor position relative to this monitor
+        rel_cursor_x = cursor_x - monitor_offset_x
+        rel_cursor_y = cursor_y - monitor_offset_y
+        
+        # Draw cursor if it's within this monitor
+        if 0 <= rel_cursor_x < original_width and 0 <= rel_cursor_y < original_height:
+            draw = ImageDraw.Draw(img)
+            # Draw a simple cursor (white arrow with black outline)
+            cursor_size = 20
+            points = [
+                (rel_cursor_x, rel_cursor_y),
+                (rel_cursor_x, rel_cursor_y + cursor_size),
+                (rel_cursor_x + cursor_size//3, rel_cursor_y + cursor_size*2//3),
+                (rel_cursor_x + cursor_size//2, rel_cursor_y + cursor_size//2)
+            ]
+            draw.polygon(points, fill='white', outline='black')
         
         img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=70)
+        img.save(buf, format='JPEG', quality=85, optimize=False, subsampling=0)
         
         # Return image data with original screen dimensions
         return buf.getvalue(), original_width, original_height
 
 def handle_client(conn):
+    global monitor_offset_x, monitor_offset_y
     screen_width = 1920
     screen_height = 1080
     try:
@@ -83,25 +114,29 @@ def handle_client(conn):
             elif cmd.startswith('TOUCH'):
                 parts = cmd.split()
                 x, y = float(parts[1]), float(parts[2])
-                pyautogui.click(x, y)
+                # Add monitor offset to coordinates
+                pyautogui.click(x + monitor_offset_x, y + monitor_offset_y)
                 conn.sendall(b'OK')
             
             elif cmd.startswith('DOWN'):
                 parts = cmd.split()
                 x, y = float(parts[1]), float(parts[2])
-                pyautogui.mouseDown(x, y)
+                # Add monitor offset to coordinates
+                pyautogui.mouseDown(x + monitor_offset_x, y + monitor_offset_y)
                 conn.sendall(b'OK')
             
             elif cmd.startswith('MOVE'):
                 parts = cmd.split()
                 x, y = float(parts[1]), float(parts[2])
-                pyautogui.moveTo(x, y)
+                # Add monitor offset to coordinates
+                pyautogui.moveTo(x + monitor_offset_x, y + monitor_offset_y)
                 conn.sendall(b'OK')
             
             elif cmd.startswith('UP'):
                 parts = cmd.split()
                 x, y = float(parts[1]), float(parts[2])
-                pyautogui.mouseUp(x, y)
+                # Add monitor offset to coordinates
+                pyautogui.mouseUp(x + monitor_offset_x, y + monitor_offset_y)
                 conn.sendall(b'OK')
     except:
         pass

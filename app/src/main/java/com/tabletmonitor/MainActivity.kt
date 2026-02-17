@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
                         imageView.setImageBitmap(bitmap)
                     }
                     
-                    delay(100)
+                    delay(33)  // ~30 FPS
                 } catch (e: Exception) {
                     isConnected = false
                     socket?.close()
