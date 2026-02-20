@@ -10,7 +10,8 @@ import os
 import time
 import win32gui
 import win32api
-from turbojpeg import TurboJPEG
+import cv2
+import numpy as np
 
 HOST = '0.0.0.0'
 PORT = 8888
@@ -22,34 +23,17 @@ ADB_PATH = os.path.join(PROJECT_ROOT, 'platform-tools', 'adb.exe')
 monitor_offset_x = 0
 monitor_offset_y = 0
 
-# Initialize TurboJPEG for hardware-accelerated encoding
-try:
-    # Try project directory first, then common paths
-    possible_paths = [
-        os.path.join(PROJECT_ROOT, 'turbojpeg.dll'),
-        os.path.join(PROJECT_ROOT, 'server', 'turbojpeg.dll'),
-        r'C:\libjpeg-turbo64\bin\turbojpeg.dll',
-        r'C:\libjpeg-turbo\bin\turbojpeg.dll',
-    ]
-    
-    jpeg = None
-    for path in possible_paths:
-        if os.path.exists(path):
-            jpeg = TurboJPEG(path)
-            print(f"Using TurboJPEG from {path}")
-            break
-    
-    if not jpeg:
-        raise Exception("turbojpeg.dll not found")
-except Exception as e:
-    jpeg = None
-    print(f"TurboJPEG not available: {e}")
-    print("Download turbojpeg.dll from: https://sourceforge.net/projects/libjpeg-turbo/files/")
-    print("Extract and place turbojpeg.dll in the server folder")
-    print("Using PIL JPEG encoder (slower)")
-
 def setup_adb_reverse():
     try:
+        # Start ADB server first
+        subprocess.run([ADB_PATH, 'start-server'], 
+                      capture_output=True, timeout=10)
+        time.sleep(2)
+        # Run adb devices to detect tablet
+        result = subprocess.run([ADB_PATH, 'devices'], 
+                      capture_output=True, text=True, timeout=5)
+        if 'device' not in result.stdout or result.stdout.count('\n') <= 1:
+            return False
         # Setup port forwarding
         subprocess.run([ADB_PATH, 'reverse', 'tcp:8888', 'tcp:8888'], 
                       capture_output=True, timeout=5)
@@ -75,16 +59,15 @@ def monitor_adb_connection():
 def capture_screen():
     global monitor_offset_x, monitor_offset_y
     with mss.mss() as sct:
-        # Check if we have multiple monitors
-        if len(sct.monitors) > 2:
-            # Use monitor 2 (extended display)
-            monitor = sct.monitors[2]
+        # Use monitor 3 for tablet (if available), otherwise monitor 2, then monitor 1
+        if len(sct.monitors) > 3:
+            monitor = sct.monitors[3]  # Third display for tablet
+        elif len(sct.monitors) > 2:
+            monitor = sct.monitors[2]  # Second extended display
         else:
-            # Use primary monitor - capture full screen
-            monitor = sct.monitors[1]
+            monitor = sct.monitors[1]  # Primary monitor
         
         screenshot = sct.grab(monitor)
-        img = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
         
         # Store original dimensions and position
         original_width = screenshot.width
@@ -92,37 +75,30 @@ def capture_screen():
         monitor_offset_x = monitor['left']
         monitor_offset_y = monitor['top']
         
+        # Convert to numpy array
+        img_array = np.frombuffer(screenshot.rgb, dtype=np.uint8).reshape(screenshot.height, screenshot.width, 3)
+        
+        # Convert RGB to BGR for OpenCV first
+        img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        
         # Get cursor position and draw it
         cursor_x, cursor_y = win32api.GetCursorPos()
-        # Adjust cursor position relative to this monitor
         rel_cursor_x = cursor_x - monitor_offset_x
         rel_cursor_y = cursor_y - monitor_offset_y
         
-        # Draw cursor if it's within this monitor
+        # Draw large visible cursor
         if 0 <= rel_cursor_x < original_width and 0 <= rel_cursor_y < original_height:
-            draw = ImageDraw.Draw(img)
-            # Draw a simple cursor (white arrow with black outline)
-            cursor_size = 20
-            points = [
-                (rel_cursor_x, rel_cursor_y),
-                (rel_cursor_x, rel_cursor_y + cursor_size),
-                (rel_cursor_x + cursor_size//3, rel_cursor_y + cursor_size*2//3),
-                (rel_cursor_x + cursor_size//2, rel_cursor_y + cursor_size//2)
-            ]
-            draw.polygon(points, fill='white', outline='black')
+            cv2.circle(img_bgr, (rel_cursor_x, rel_cursor_y), 15, (0, 255, 255), -1)
+            cv2.circle(img_bgr, (rel_cursor_x, rel_cursor_y), 15, (0, 0, 0), 3)
         
-        img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+        # Resize if needed
+        if original_width > 1920 or original_height > 1080:
+            img_bgr = cv2.resize(img_bgr, (1920, 1080), interpolation=cv2.INTER_NEAREST)
         
-        # Use TurboJPEG for hardware-accelerated encoding if available
-        if jpeg:
-            import numpy as np
-            img_array = np.array(img)
-            img_data = jpeg.encode(img_array, quality=75, jpeg_subsample=2)  # Lower quality for speed
-            return img_data, original_width, original_height
-        else:
-            buf = io.BytesIO()
-            img.save(buf, format='JPEG', quality=85, optimize=False, subsampling=0)
-            return buf.getvalue(), original_width, original_height
+        # Fast JPEG encoding
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
+        _, img_data = cv2.imencode('.jpg', img_bgr, encode_param)
+        return img_data.tobytes(), original_width, original_height
 
 def handle_client(conn):
     global monitor_offset_x, monitor_offset_y
@@ -187,6 +163,20 @@ def main():
     # Start ADB monitoring thread
     adb_thread = threading.Thread(target=monitor_adb_connection, daemon=True)
     adb_thread.start()
+    
+    # Start clock app in separate thread
+    def start_clock():
+        time.sleep(2)  # Wait for server to be ready
+        clock_path = os.path.join(PROJECT_ROOT, 'clock', 'clock.py')
+        if os.path.exists(clock_path):
+            try:
+                subprocess.Popen(['python', clock_path], cwd=os.path.dirname(clock_path))
+                print("Clock app started")
+            except Exception as e:
+                print(f"Failed to start clock app: {e}")
+    
+    clock_thread = threading.Thread(target=start_clock, daemon=True)
+    clock_thread.start()
     
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
