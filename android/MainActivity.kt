@@ -1,6 +1,5 @@
 package com.tabletmonitor
 
-import android.graphics.Bitmap
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Bundle
@@ -47,7 +46,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     
     private suspend fun connectAndStream() {
         try {
-            // Connect to video stream
             videoSocket = Socket("localhost", 8888)
             touchSocket = Socket("localhost", 8889)
             
@@ -55,16 +53,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             screenWidth = input.readInt()
             screenHeight = input.readInt()
             
-            // Setup H.264 decoder with proper configuration
-            decoder = MediaCodec.createDecoderByType("video/avc")
-            val format = MediaFormat.createVideoFormat("video/avc", screenWidth, screenHeight).apply {
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024)
-                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+            // Wait for surface to be ready
+            while (surface == null) {
+                delay(100)
             }
+            
+            // Setup H.264 decoder
+            decoder = MediaCodec.createDecoderByType("video/avc")
+            val format = MediaFormat.createVideoFormat("video/avc", screenWidth, screenHeight)
             decoder?.configure(format, surface, null, 0)
             decoder?.start()
-            
-            val nalBuffer = mutableListOf<Byte>()
             
             while (isActive && surface != null) {
                 try {
@@ -72,12 +70,21 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     val h264Data = ByteArray(chunkSize)
                     input.readFully(h264Data)
                     
-                    // Add to NAL buffer
-                    nalBuffer.addAll(h264Data.toList())
-                    
-                    // Process complete NAL units
-                    processNalUnits(nalBuffer)
-                    
+                    decoder?.let { codec ->
+                        val inputBufferIndex = codec.dequeueInputBuffer(0)
+                        if (inputBufferIndex >= 0) {
+                            val inputBuffer = codec.getInputBuffer(inputBufferIndex)
+                            inputBuffer?.clear()
+                            inputBuffer?.put(h264Data)
+                            codec.queueInputBuffer(inputBufferIndex, 0, h264Data.size, 0, 0)
+                        }
+                        
+                        val info = MediaCodec.BufferInfo()
+                        val outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
+                        if (outputBufferIndex >= 0) {
+                            codec.releaseOutputBuffer(outputBufferIndex, true)
+                        }
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     break
@@ -85,28 +92,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-    
-    private fun processNalUnits(nalBuffer: MutableList<Byte>) {
-        val nalArray = nalBuffer.toByteArray()
-        
-        decoder?.let { codec ->
-            val inputBufferIndex = codec.dequeueInputBuffer(10000)
-            if (inputBufferIndex >= 0) {
-                val inputBuffer = codec.getInputBuffer(inputBufferIndex)
-                inputBuffer?.clear()
-                inputBuffer?.put(nalArray)
-                codec.queueInputBuffer(inputBufferIndex, 0, nalArray.size, 0, 0)
-                nalBuffer.clear()
-            }
-            
-            val info = MediaCodec.BufferInfo()
-            var outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
-            while (outputBufferIndex >= 0) {
-                codec.releaseOutputBuffer(outputBufferIndex, true)
-                outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
-            }
         }
     }
     

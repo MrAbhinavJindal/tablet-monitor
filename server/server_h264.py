@@ -23,25 +23,31 @@ sct = None
 target_monitor = None
 
 
+adb_setup_done = False
+
 def setup_adb_reverse():
+    global adb_setup_done
     try:
-        subprocess.run([ADB_PATH, 'start-server'], capture_output=True, timeout=10)
-        time.sleep(2)
         result = subprocess.run([ADB_PATH, 'devices'], capture_output=True, text=True, timeout=5)
-        if 'device' not in result.stdout or result.stdout.count('\n') <= 1:
+        if 'device' not in result.stdout:
             return False
         subprocess.run([ADB_PATH, 'reverse', 'tcp:8888', 'tcp:8888'], capture_output=True, timeout=5)
         subprocess.run([ADB_PATH, 'reverse', 'tcp:8889', 'tcp:8889'], capture_output=True, timeout=5)
         subprocess.run([ADB_PATH, 'shell', 'am', 'start', '-n', 'com.tabletmonitor/.MainActivity'], capture_output=True, timeout=5)
+        if not adb_setup_done:
+            print("ADB reverse and app launch completed")
+            adb_setup_done = True
         return True
-    except:
+    except Exception as e:
+        if not adb_setup_done:
+            print(f"ADB setup error: {e}")
         return False
 
 def monitor_adb_connection():
     while True:
         try:
             result = subprocess.run([ADB_PATH, 'devices'], capture_output=True, text=True, timeout=5)
-            if 'device' in result.stdout and result.stdout.count('\n') > 1:
+            if 'device' in result.stdout:
                 setup_adb_reverse()
         except:
             pass
@@ -49,6 +55,7 @@ def monitor_adb_connection():
 
 def stream_h264(conn):
     global monitor_offset_x, monitor_offset_y, sct, target_monitor, frame_count, last_fps_time
+    print("Client connected for H.264 stream")
     
     if sct is None:
         sct = mss.mss()
@@ -57,6 +64,7 @@ def stream_h264(conn):
                              sct.monitors[3] if len(sct.monitors) > 3 else sct.monitors[2] if len(sct.monitors) > 2 else sct.monitors[1])
         monitor_offset_x = target_monitor['left']
         monitor_offset_y = target_monitor['top']
+        print(f"Using secondary monitor: {target_monitor['width']}x{target_monitor['height']}")
     
     w, h = target_monitor['width'], target_monitor['height']
     conn.sendall(struct.pack('>II', w, h))
