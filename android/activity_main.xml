@@ -3,9 +3,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
     
-    <ImageView
-        android:id="@+id/imageView"
+    <SurfaceView
+        android:id="@+id/surfaceView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitCenter" />
+        android:keepScreenOn="true" />
 </FrameLayout>

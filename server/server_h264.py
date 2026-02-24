@@ -21,7 +21,7 @@ frame_count = 0
 last_fps_time = time.time()
 sct = None
 target_monitor = None
-ffmpeg_process = None
+
 
 def setup_adb_reverse():
     try:
@@ -48,7 +48,7 @@ def monitor_adb_connection():
         time.sleep(10)
 
 def stream_h264(conn):
-    global monitor_offset_x, monitor_offset_y, sct, target_monitor, ffmpeg_process, frame_count, last_fps_time
+    global monitor_offset_x, monitor_offset_y, sct, target_monitor, frame_count, last_fps_time
     
     if sct is None:
         sct = mss.mss()
@@ -62,9 +62,9 @@ def stream_h264(conn):
     conn.sendall(struct.pack('>II', w, h))
     
     ffmpeg_cmd = [
-        FFMPEG_PATH, '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{w}x{h}', '-r', '30',
+        FFMPEG_PATH, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{w}x{h}', '-r', '30',
         '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-        '-crf', '23', '-f', 'h264', '-'
+        '-crf', '23', '-profile:v', 'baseline', '-level', '3.1', '-f', 'h264', '-'
     ]
     
     ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -107,6 +107,7 @@ def stream_h264(conn):
     finally:
         if ffmpeg_process:
             ffmpeg_process.terminate()
+            ffmpeg_process.wait()
         conn.close()
 
 def handle_touch(conn):
