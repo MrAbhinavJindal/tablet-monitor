@@ -72,18 +72,48 @@ def stream_h264(conn):
     ffmpeg_cmd = [
         FFMPEG_PATH, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{w}x{h}', '-r', '30',
         '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-        '-crf', '23', '-profile:v', 'baseline', '-level', '3.1', '-f', 'h264', '-'
+        '-crf', '23', '-profile:v', 'baseline', '-level', '3.1', 
+        '-keyint_min', '30', '-g', '30', '-sc_threshold', '0',
+        '-bsf:v', 'h264_mp4toannexb', '-f', 'h264', '-'
     ]
     
     ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     
     def read_h264():
         try:
+            frame_buffer = bytearray()
             while True:
                 chunk = ffmpeg_process.stdout.read(4096)
                 if not chunk:
                     break
-                conn.sendall(struct.pack('>I', len(chunk)) + chunk)
+                
+                frame_buffer.extend(chunk)
+                
+                # Look for NAL unit start codes (0x00000001)
+                while len(frame_buffer) >= 4:
+                    start_idx = -1
+                    for i in range(len(frame_buffer) - 3):
+                        if frame_buffer[i:i+4] == b'\x00\x00\x00\x01':
+                            start_idx = i
+                            break
+                    
+                    if start_idx == -1:
+                        break
+                    
+                    # Find next NAL unit
+                    next_start = -1
+                    for i in range(start_idx + 4, len(frame_buffer) - 3):
+                        if frame_buffer[i:i+4] == b'\x00\x00\x00\x01':
+                            next_start = i
+                            break
+                    
+                    if next_start != -1:
+                        # Send complete NAL unit
+                        nal_unit = frame_buffer[start_idx:next_start]
+                        conn.sendall(struct.pack('>I', len(nal_unit)) + nal_unit)
+                        frame_buffer = frame_buffer[next_start:]
+                    else:
+                        break
         except:
             pass
     

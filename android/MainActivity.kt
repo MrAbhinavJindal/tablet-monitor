@@ -3,6 +3,7 @@ package com.tabletmonitor
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -22,6 +23,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var screenWidth = 0
     private var screenHeight = 0
+    private var spsReceived = false
+    private var ppsReceived = false
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,33 +39,45 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     
     override fun surfaceCreated(holder: SurfaceHolder) {
         surface = holder.surface
+        Log.d("MainActivity", "Surface created")
     }
     
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        Log.d("MainActivity", "Surface changed: ${width}x${height}")
+    }
     
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         surface = null
+        Log.d("MainActivity", "Surface destroyed")
     }
     
     private suspend fun connectAndStream() {
         try {
+            Log.d("MainActivity", "Connecting to server...")
             videoSocket = Socket("localhost", 8888)
             touchSocket = Socket("localhost", 8889)
             
             val input = DataInputStream(videoSocket?.getInputStream())
             screenWidth = input.readInt()
             screenHeight = input.readInt()
+            Log.d("MainActivity", "Screen size: ${screenWidth}x${screenHeight}")
             
             // Wait for surface to be ready
             while (surface == null) {
                 delay(100)
             }
             
-            // Setup H.264 decoder
+            // Setup H.264 decoder with comprehensive configuration
             decoder = MediaCodec.createDecoderByType("video/avc")
-            val format = MediaFormat.createVideoFormat("video/avc", screenWidth, screenHeight)
+            val format = MediaFormat.createVideoFormat("video/avc", screenWidth, screenHeight).apply {
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 * 1024 * 1024) // 2MB buffer
+                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                setInteger(MediaFormat.KEY_PRIORITY, 0) // Realtime priority
+            }
+            
             decoder?.configure(format, surface, null, 0)
             decoder?.start()
+            Log.d("MainActivity", "MediaCodec decoder started")
             
             while (isActive && surface != null) {
                 try {
@@ -70,28 +85,61 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     val h264Data = ByteArray(chunkSize)
                     input.readFully(h264Data)
                     
-                    decoder?.let { codec ->
-                        val inputBufferIndex = codec.dequeueInputBuffer(0)
-                        if (inputBufferIndex >= 0) {
-                            val inputBuffer = codec.getInputBuffer(inputBufferIndex)
-                            inputBuffer?.clear()
-                            inputBuffer?.put(h264Data)
-                            codec.queueInputBuffer(inputBufferIndex, 0, h264Data.size, 0, 0)
+                    // Check NAL unit type
+                    if (h264Data.size >= 5 && h264Data[0] == 0x00.toByte() && 
+                        h264Data[1] == 0x00.toByte() && h264Data[2] == 0x00.toByte() && 
+                        h264Data[3] == 0x01.toByte()) {
+                        
+                        val nalType = h264Data[4].toInt() and 0x1F
+                        Log.d("MainActivity", "NAL unit type: $nalType, size: $chunkSize")
+                        
+                        when (nalType) {
+                            7 -> { // SPS
+                                spsReceived = true
+                                Log.d("MainActivity", "SPS received")
+                            }
+                            8 -> { // PPS
+                                ppsReceived = true
+                                Log.d("MainActivity", "PPS received")
+                            }
+                            5 -> { // IDR frame
+                                Log.d("MainActivity", "IDR frame received")
+                            }
+                            1 -> { // P frame
+                                Log.d("MainActivity", "P frame received")
+                            }
                         }
                         
-                        val info = MediaCodec.BufferInfo()
-                        val outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
-                        if (outputBufferIndex >= 0) {
-                            codec.releaseOutputBuffer(outputBufferIndex, true)
+                        // Feed to decoder
+                        decoder?.let { codec ->
+                            val inputBufferIndex = codec.dequeueInputBuffer(10000)
+                            if (inputBufferIndex >= 0) {
+                                val inputBuffer = codec.getInputBuffer(inputBufferIndex)
+                                inputBuffer?.clear()
+                                inputBuffer?.put(h264Data)
+                                
+                                val flags = if (nalType == 5) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                                codec.queueInputBuffer(inputBufferIndex, 0, h264Data.size, 0, flags)
+                                
+                                // Process output
+                                val info = MediaCodec.BufferInfo()
+                                var outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
+                                while (outputBufferIndex >= 0) {
+                                    codec.releaseOutputBuffer(outputBufferIndex, true)
+                                    outputBufferIndex = codec.dequeueOutputBuffer(info, 0)
+                                }
+                            } else {
+                                Log.w("MainActivity", "No input buffer available")
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("MainActivity", "Error processing H.264 data", e)
                     break
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("MainActivity", "Connection error", e)
         }
     }
     
@@ -114,7 +162,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 touchSocket?.getOutputStream()?.write(msg.toByteArray())
                 touchSocket?.getInputStream()?.read()
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("MainActivity", "Touch error", e)
             }
         }
         return true
